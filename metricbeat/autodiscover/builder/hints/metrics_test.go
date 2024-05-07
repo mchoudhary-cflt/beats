@@ -20,10 +20,11 @@ package hints
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
+	"strings"
 	"testing"
 
-	"github.com/docker/docker/pkg/ioutils"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/elastic/beats/v7/metricbeat/mb"
@@ -763,9 +764,39 @@ func createAnExistingKeystore(t *testing.T, path string, secret string) keystore
 	return keyStore
 }
 
+const Prefix = `\\?\`
+
+// AddPrefix adds the Windows long path prefix to the path provided if
+// it does not already have it.
+func AddPrefix(path string) string {
+	if !strings.HasPrefix(path, Prefix) {
+		if strings.HasPrefix(path, `\\`) {
+			// This is a UNC path, so we need to add 'UNC' to the path as well.
+			path = Prefix + `UNC` + path[1:]
+		} else {
+			path = Prefix + path
+		}
+	}
+	return path
+}
+
+// MkdirTemp is the equivalent of [os.MkdirTemp], except that on Windows
+// the result is in Windows longpath format. On Unix systems it is
+// equivalent to [os.MkdirTemp].
+func MkdirTemp(dir, prefix string) (string, error) {
+	tempDir, err := os.MkdirTemp(dir, prefix)
+	if err != nil {
+		return "", err
+	}
+	if runtime.GOOS != "windows" {
+		return tempDir, nil
+	}
+	return AddPrefix(tempDir), nil
+}
+
 // create a temporary file on disk to save the keystore.
 func getTemporaryKeystoreFile() string {
-	path, err := ioutils.TempDir("", "testing")
+	path, err := MkdirTemp("", "testing")
 	if err != nil {
 		panic(err)
 	}
